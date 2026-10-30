@@ -103,7 +103,14 @@ jobs:
           cp -a .next/static "dist/${PKG}/.next/static"
           cp -a public "dist/${PKG}/public"
 
+          # 不要把仓库里的 .env 带进发布包（standalone 会自动拷贝 env 文件）
+          rm -f "dist/${PKG}/.env" "dist/${PKG}/.env.local" "dist/${PKG}/.env.production"
+
           # standalone 不含 drizzle-kit，把 SQLite 初始化 SQL 一并附上
+          if ! compgen -G "src/db/sqlite/migrations/production/*.sql" > /dev/null; then
+            NODE_ENV=production DB_DRIVER=sqlite DB_CONNECTION_URL=file:./sqlite.db npx drizzle-kit generate \
+              > /dev/null 2>&1 || echo "::warning::未能生成 SQLite 初始化 SQL，请改用源码仓库执行 pnpm db:migrate"
+          fi
           if compgen -G "src/db/sqlite/migrations/production/*.sql" > /dev/null; then
             mkdir -p "dist/${PKG}/db/sqlite"
             cp src/db/sqlite/migrations/production/*.sql "dist/${PKG}/db/sqlite/"
@@ -238,20 +245,20 @@ jobs:
             sources+=("${IMAGE}@sha256:${file}")
           done
 
-          docker buildx imagetools create \
-            -t "${IMAGE}:v${VERSION}" \
-            -t "${IMAGE}:${VERSION}" \
-            -t "${IMAGE}:${MINOR}" \
-            -t "${IMAGE}:${MAJOR}" \
-            -t "${IMAGE}:latest" \
-            "${sources[@]}"
+          # 预发布版本（含 -）不移动 latest / 主次版本滚动标签
+          tags=(-t "${IMAGE}:v${VERSION}" -t "${IMAGE}:${VERSION}")
+          if [[ "${VERSION}" != *-* ]]; then
+            tags+=(-t "${IMAGE}:${MINOR}" -t "${IMAGE}:${MAJOR}" -t "${IMAGE}:latest")
+          fi
+
+          docker buildx imagetools create "${tags[@]}" "${sources[@]}"
 
           docker buildx imagetools inspect "${IMAGE}:${VERSION}"
 
           {
             echo "### 已发布镜像"
             echo ""
-            echo "`${IMAGE}:${VERSION}`（同时打 `${MINOR}`、`${MAJOR}`、`latest`）"
+            echo "`${IMAGE}:${VERSION}`（预发布版本只打精确标签）"
             echo ""
             echo "架构：linux/amd64, linux/arm64（原生构建，无 QEMU）"
           } >> "$GITHUB_STEP_SUMMARY"
