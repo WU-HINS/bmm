@@ -50,7 +50,7 @@ BMM 是一个用于管理网站书签的开源应用。它把“收藏网页”�
 - 支持导入浏览器导出的书签文件，能把目录结构转为标签关联，降低迁移成本。
 - 支持标签与书签的多对多关系、拖拽排序、关键词检索与拼音检索。
 - 自动抓取网站标题、描述、图标，并补充常见图标路径探测能力。
-- 支持 GitHub OAuth 与邮箱密码登录。
+- 支持 GitHub OAuth、通用 OIDC 单点登录与邮箱密码登录，并支持把 OIDC 身份绑定到已有账户。
 - 通过 AI 自动分析网站信息、推荐标签，并为标签生成关联建议与主题色。
 - 响应式界面同时覆盖桌面端与移动端，支持亮色与暗色主题。
 
@@ -136,6 +136,9 @@ pnpm dev
 | `AUTH_SECRET`        | NextAuth 密钥，生产环境建议配置            |
 | `AUTH_GITHUB_ID`     | GitHub OAuth Client ID，可选               |
 | `AUTH_GITHUB_SECRET` | GitHub OAuth Client Secret，可选           |
+| `AUTH_OIDC_ISSUER`   | OIDC 发现地址（issuer 基址），可选         |
+| `AUTH_OIDC_ID`       | OIDC Client ID，可选                       |
+| `AUTH_OIDC_SECRET`   | OIDC Client Secret，可选                   |
 
 <a id="database"></a>
 
@@ -203,6 +206,20 @@ AI 能力用于减少书签录入与整理的手工操作，当前主要覆盖�
 
 支持范围包括 OpenAI-compatible 提供商，例如 OpenAI、DeepSeek、Moonshot、GLM 等。若接入非 OpenAI-compatible 服务，可参考 [AI SDK Providers](https://ai-sdk.dev/providers/ai-sdk-providers)。
 
+<a id="ci-cd"></a>
+
+## CI / CD
+
+仓库内置三个 GitHub Actions 工作流，全部在**原生架构 runner** 上构建（amd64 / arm64），不使用 QEMU 模拟：
+
+| 工作流 | 触发 | 产物 |
+| --- | --- | --- |
+| CI | push（所有分支）、PR | 类型检查、Lint、单元测试 |
+| Docker CI | 每次 push | 多架构 CI 镜像（`ci-<sha>` / `ci-<branch>`，**不含 latest**） |
+| Release | tag `v*.*.*` 或手动 | amd64/arm64 二进制包、多架构镜像（`vX.Y.Z` / `X.Y` / `latest`）、GitHub Release |
+
+详见 [`doc/ci-cd.md`](./doc/ci-cd.md)。
+
 <a id="oauth"></a>
 
 ## GitHub OAuth 配置
@@ -225,6 +242,40 @@ AUTH_URL=https://your-domain.com
 <img width="480" alt="创建 GitHub OAuth 应用" src="./doc/images/github-oauth-new.png">
 
 <img width="480" alt="检查 GitHub 回调地址" src="./doc/images/github-oauth-cb-url.png">
+
+<a id="oidc"></a>
+
+## OIDC 登录与账号绑定
+
+BMM 内置通用 OIDC 支持：只要 IdP 提供标准的 `/.well-known/openid-configuration`，用三个环境变量即可接入。Keycloak、Authentik、Auth0、Casdoor、Zitadel、Logto、GitLab、Authing 等都可直接使用。
+
+```bash
+AUTH_OIDC_ISSUER=https://id.example.com/realms/bmm
+AUTH_OIDC_ID=bmm
+AUTH_OIDC_SECRET=your-client-secret
+```
+
+IdP 侧需要登记两个回调地址：
+
+| 用途     | 回调地址                                  |
+| -------- | ----------------------------------------- |
+| 登录     | `{AUTH_URL}/api/auth/callback/oidc`       |
+| 账号绑定 | `{AUTH_URL}/api/auth/oidc/link/callback` |
+
+配置完成后的表现：
+
+- 登录页出现「<名称> 授权登录」按钮，名称由 `AUTH_OIDC_NAME` 控制；
+- 已登录用户可在「个人空间 → 个人资料 → 账号绑定」中绑定或解绑 OIDC 身份；
+- 绑定后可以直接用 OIDC 登录进入原账户，不会再因为邮箱重复而提示 `OAuthAccountNotLinked`。
+
+安全默认值：
+
+- 默认**不**按邮箱把 OIDC 身份自动合并进已有账户，避免 IdP 未验证的邮箱被用来接管账号；确需该行为时显式设置 `AUTH_OIDC_TRUST_EMAIL=true`；
+- 绑定链路使用 `state` + `nonce` + PKCE，`id_token` 走 JWKS 验签并校验 `iss` / `aud` / `exp`；
+- `id_token` 仅接受非对称签名：RSA（RS/PS 系列）、EC（ES256/384/512）与 EdDSA，显式拒绝 `none` 与 `HS*`；
+- 解绑前会检查账户是否还有其它登录方式，避免把自己锁在门外。
+
+完整参数说明与常见 IdP 的配置示例见 [`doc/oidc.md`](./doc/oidc.md)。
 
 <a id="faq"></a>
 

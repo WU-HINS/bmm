@@ -50,7 +50,7 @@ You can use it as:
 - Browser bookmark exports can be imported and mapped into tag relationships, which makes migration easier.
 - Supports many-to-many tag and bookmark relations, drag-and-drop sorting, keyword search, and pinyin search.
 - Automatically fetches website titles, descriptions, and icons, with extra probing for common icon paths.
-- Supports both GitHub OAuth and email/password authentication.
+- Supports GitHub OAuth, generic OIDC single sign-on, and email/password authentication, including linking an OIDC identity to an existing account.
 - Uses AI to analyze websites, suggest tags, and generate related-tag suggestions and theme colors.
 - Responsive UI works across desktop and mobile, with light and dark themes.
 
@@ -136,6 +136,9 @@ See [`.env`](./.env) for the full example.
 | `AUTH_SECRET`        | NextAuth secret, recommended for production        |
 | `AUTH_GITHUB_ID`     | Optional GitHub OAuth Client ID                    |
 | `AUTH_GITHUB_SECRET` | Optional GitHub OAuth Client Secret                |
+| `AUTH_OIDC_ISSUER`   | Optional OIDC discovery / issuer base URL          |
+| `AUTH_OIDC_ID`       | Optional OIDC Client ID                            |
+| `AUTH_OIDC_SECRET`   | Optional OIDC Client Secret                        |
 
 <a id="database"></a>
 
@@ -203,6 +206,20 @@ The project uses Vercel AI SDK with an OpenAI-compatible provider. After signing
 
 Supported options include OpenAI-compatible providers such as OpenAI, DeepSeek, Moonshot, and GLM. For non OpenAI-compatible services, refer to [AI SDK Providers](https://ai-sdk.dev/providers/ai-sdk-providers).
 
+<a id="ci-cd"></a>
+
+## CI / CD
+
+Three GitHub Actions workflows ship with the repo, all built on **native-architecture runners** (amd64 / arm64) — no QEMU emulation:
+
+| Workflow | Trigger | Output |
+| --- | --- | --- |
+| CI | every push, PRs | typecheck, lint, unit tests |
+| Docker CI | every push | multi-arch CI images (`ci-<sha>` / `ci-<branch>`, **never latest**) |
+| Release | tag `v*.*.*` or manual | amd64/arm64 bundles, multi-arch images (`vX.Y.Z` / `X.Y` / `latest`), GitHub Release |
+
+See [`doc/ci-cd.md`](./doc/ci-cd.md).
+
 <a id="oauth"></a>
 
 ## GitHub OAuth Setup
@@ -225,6 +242,40 @@ These screenshots can help when checking the configuration:
 <img width="480" alt="Create GitHub OAuth app" src="./doc/images/github-oauth-new.png">
 
 <img width="480" alt="Check GitHub callback URL" src="./doc/images/github-oauth-cb-url.png">
+
+<a id="oidc"></a>
+
+## OIDC Login and Account Linking
+
+BMM ships with generic OIDC support: any IdP exposing a standard `/.well-known/openid-configuration` can be plugged in with three environment variables — Keycloak, Authentik, Auth0, Casdoor, Zitadel, Logto, GitLab, Authing, and more.
+
+```bash
+AUTH_OIDC_ISSUER=https://id.example.com/realms/bmm
+AUTH_OIDC_ID=bmm
+AUTH_OIDC_SECRET=your-client-secret
+```
+
+Register two callback URLs on the IdP side:
+
+| Purpose         | Callback URL                              |
+| --------------- | ----------------------------------------- |
+| Login           | `{AUTH_URL}/api/auth/callback/oidc`       |
+| Account linking | `{AUTH_URL}/api/auth/oidc/link/callback` |
+
+What changes once configured:
+
+- The login page shows a "<name> sign-in" button, labelled by `AUTH_OIDC_NAME`;
+- Signed-in users can link or unlink the OIDC identity under "User space → Profile → Account linking";
+- A linked identity signs straight into the existing account, no more `OAuthAccountNotLinked` on duplicate e-mail.
+
+Security defaults:
+
+- OIDC identities are **not** merged into existing accounts by e-mail unless you explicitly set `AUTH_OIDC_TRUST_EMAIL=true`;
+- The linking flow uses `state` + `nonce` + PKCE and verifies `id_token` against JWKS (`iss` / `aud` / `exp`);
+- `id_token` signatures must be asymmetric: RSA (RS/PS), EC (ES256/384/512), or EdDSA — `none` and `HS*` are rejected;
+- Unlinking is refused when it would leave the account without any login method.
+
+See [`doc/oidc.md`](./doc/oidc.md) for the full parameter reference and per-IdP examples.
 
 <a id="faq"></a>
 
