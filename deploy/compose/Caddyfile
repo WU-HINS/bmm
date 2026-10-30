@@ -1,0 +1,29 @@
+# Caddy：自动申请/续期证书，反向代理到 BMM
+# 域名通过 docker compose 的 BMM_DOMAIN 注入（Caddy 的环境变量语法是 {$VAR}）
+
+# 需要证书到期提醒时取消注释并填 ACME_EMAIL
+# {
+#   email {$ACME_EMAIL}
+# }
+
+{$BMM_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	reverse_proxy bmm:3000 {
+		health_uri /api/health
+		health_interval 30s
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

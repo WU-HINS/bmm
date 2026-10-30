@@ -1,0 +1,62 @@
+# 示例编排：BMM + PostgreSQL
+#   cp .env.example .env && docker compose -f postgres.yml up -d
+name: bmm
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bmm-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bmm}
+      POSTGRES_USER: ${POSTGRES_USER:-bmm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 中设置 POSTGRES_PASSWORD}
+      # 中文排序/比较更稳
+      LANG: C.UTF-8
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-bmm} -d ${POSTGRES_DB:-bmm}']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    # 默认不对外暴露端口；需要直连时再打开
+    # ports:
+    #   - "5432:5432"
+
+  bmm:
+    image: ${BMM_IMAGE:-ghcr.io/wu-hins/bmm}:${BMM_TAG:-latest}
+    container_name: bmm
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${BMM_PORT:-3000}:3000"
+    environment:
+      DB_DRIVER: postgresql
+      # 密码含特殊字符时需做 URL 编码，或改用简单密码
+      DB_CONNECTION_URL: postgresql://${POSTGRES_USER:-bmm}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-bmm}
+      NEXT_PUBLIC_WEBSITE_NAME: ${NEXT_PUBLIC_WEBSITE_NAME:-BMM}
+      AUTH_URL: ${AUTH_URL:?请在 .env 中设置 AUTH_URL}
+      AUTH_SECRET: ${AUTH_SECRET:?请在 .env 中设置 AUTH_SECRET}
+      AUTH_GITHUB_ID: ${AUTH_GITHUB_ID:-}
+      AUTH_GITHUB_SECRET: ${AUTH_GITHUB_SECRET:-}
+      AUTH_OIDC_ISSUER: ${AUTH_OIDC_ISSUER:-}
+      AUTH_OIDC_ID: ${AUTH_OIDC_ID:-}
+      AUTH_OIDC_SECRET: ${AUTH_OIDC_SECRET:-}
+      AUTH_OIDC_NAME: ${AUTH_OIDC_NAME:-OIDC}
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3000/api/health/deep']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+volumes:
+  pgdata:

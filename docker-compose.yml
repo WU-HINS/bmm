@@ -1,32 +1,48 @@
+# 最简示例：BMM + PostgreSQL
+#
+# 更完整的编排（SQLite / PostgreSQL / Caddy HTTPS / Kubernetes）见 deploy/README.md
+#
+#   cp deploy/compose/.env.example .env
+#   docker compose up -d
 services:
   postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: bmm
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 666888
+      POSTGRES_USER: bmm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-666888}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    # 如果需要外部链接当前数据库，可以放开这里的端口映射
+    # 如需从宿主机直连数据库，放开下面的端口映射
     # ports:
-    # - 5432:5432
+    #   - '5432:5432'
     healthcheck:
-      test: ['CMD', 'pg_isready', '-U', 'postgres', '-d', 'bmm']
+      test: ['CMD-SHELL', 'pg_isready -U bmm -d bmm']
       interval: 3s
       timeout: 3s
-      retries: 3
+      retries: 12
 
   app:
-    image: lcclcc/bmm
+    image: ${BMM_IMAGE:-ghcr.io/wu-hins/bmm}:${BMM_TAG:-latest}
     environment:
-      - DB_DRIVER=postgresql
-      - DB_CONNECTION_URL=postgresql://postgres:666888@postgres:5432/bmm
+      DB_DRIVER: postgresql
+      DB_CONNECTION_URL: postgresql://bmm:${POSTGRES_PASSWORD:-666888}@postgres:5432/bmm
+      AUTH_URL: ${AUTH_URL:-http://localhost:3000}
+      AUTH_SECRET: ${AUTH_SECRET:?请在 .env 中设置 AUTH_SECRET}
+      AUTH_OIDC_ISSUER: ${AUTH_OIDC_ISSUER:-}
+      AUTH_OIDC_ID: ${AUTH_OIDC_ID:-}
+      AUTH_OIDC_SECRET: ${AUTH_OIDC_SECRET:-}
     ports:
-      - 3000:3000
+      - '${BMM_PORT:-3000}:3000'
     depends_on:
       postgres:
         condition: service_healthy
-    command: pnpm start
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3000/api/health/deep']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
 volumes:
   postgres_data:

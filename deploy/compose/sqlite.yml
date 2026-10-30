@@ -1,0 +1,47 @@
+# 示例编排：单机 SQLite
+#   cp .env.example .env && docker compose -f sqlite.yml up -d
+#   docker compose -f sqlite.yml logs -f bmm
+name: bmm
+
+services:
+  bmm:
+    image: ${BMM_IMAGE:-ghcr.io/wu-hins/bmm}:${BMM_TAG:-latest}
+    container_name: bmm
+    restart: unless-stopped
+    ports:
+      - "${BMM_PORT:-3000}:3000"
+    environment:
+      # ---- 运行时 ----
+      DB_DRIVER: sqlite
+      DB_CONNECTION_URL: file:/app/data/sqlite.db
+      NEXT_PUBLIC_WEBSITE_NAME: ${NEXT_PUBLIC_WEBSITE_NAME:-BMM}
+      # AUTH_URL 必须等于用户实际访问的地址（OIDC 回调依赖它）
+      AUTH_URL: ${AUTH_URL:?请在 .env 中设置 AUTH_URL}
+      AUTH_SECRET: ${AUTH_SECRET:?请在 .env 中设置 AUTH_SECRET}
+      # ---- GitHub OAuth（可选）----
+      AUTH_GITHUB_ID: ${AUTH_GITHUB_ID:-}
+      AUTH_GITHUB_SECRET: ${AUTH_GITHUB_SECRET:-}
+      # ---- OIDC（可选，三项齐备才启用）----
+      AUTH_OIDC_ISSUER: ${AUTH_OIDC_ISSUER:-}
+      AUTH_OIDC_ID: ${AUTH_OIDC_ID:-}
+      AUTH_OIDC_SECRET: ${AUTH_OIDC_SECRET:-}
+      AUTH_OIDC_NAME: ${AUTH_OIDC_NAME:-OIDC}
+      AUTH_OIDC_ICON: ${AUTH_OIDC_ICON:-}
+      AUTH_OIDC_TRUST_EMAIL: ${AUTH_OIDC_TRUST_EMAIL:-false}
+    volumes:
+      # SQLite 数据目录；首次启动时容器内 db-init 会自动建表
+      - bmm-data:/app/data
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3000/api/health']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+volumes:
+  bmm-data:

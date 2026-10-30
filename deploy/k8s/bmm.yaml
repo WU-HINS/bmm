@@ -1,0 +1,153 @@
+# 示例编排：BMM 应用（k8s）
+#   kubectl apply -f deploy/k8s/bmm.yaml
+#
+# 前置：先应用 deploy/k8s/postgres.yaml；若用 SQLite，把 Deployment 的副本数保持 1
+#      并把 DB_CONNECTION_URL 改为 file:/app/data/sqlite.db + 挂载 PVC（见 README）。
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bmm
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bmm-config
+  namespace: bmm
+data:
+  DB_DRIVER: postgresql
+  AUTH_URL: https://bmm.example.com
+  NEXT_PUBLIC_WEBSITE_NAME: BMM
+  # OIDC 留空即关闭；三项齐备才启用（Secret 中放密钥）
+  AUTH_OIDC_ISSUER: ''
+  AUTH_OIDC_ID: ''
+  AUTH_OIDC_NAME: OIDC
+  AUTH_OIDC_TRUST_EMAIL: 'false'
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: bmm-secret
+  namespace: bmm
+type: Opaque
+stringData:
+  # openssl rand -hex 32
+  AUTH_SECRET: change-me-to-a-random-32-bytes-hex
+  # 密码含特殊字符时需 URL 编码
+  DB_CONNECTION_URL: postgresql://bmm:change-me@postgres:5432/bmm
+  AUTH_OIDC_SECRET: ''
+  AUTH_GITHUB_ID: ''
+  AUTH_GITHUB_SECRET: ''
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bmm
+  namespace: bmm
+  labels:
+    app: bmm
+spec:
+  # ! 镜像启动时会自动执行数据库初始化/迁移；多副本并发迁移存在竞争
+  #   需要横向扩容时请先把迁移拆成独立 Job，并给应用覆盖启动命令：
+  #   command: ["pnpm", "exec", "next", "start"]
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: bmm
+  template:
+    metadata:
+      labels:
+        app: bmm
+    spec:
+      # 镜像在 GHCR 公共包时无需该字段；私有包需配置拉取凭据
+      # imagePullSecrets:
+      #   - name: ghcr-pull
+      containers:
+        - name: bmm
+          image: ghcr.io/wu-hins/bmm:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: bmm-config
+            - secretRef:
+                name: bmm-secret
+          env:
+            - name: PORT
+              value: '3000'
+            - name: HOSTNAME
+              value: '0.0.0.0'
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            failureThreshold: 30
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+          readinessProbe:
+            # /api/health/deep 会访问数据库，不可用时从负载均衡摘除
+            httpGet:
+              path: /api/health/deep
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bmm
+  namespace: bmm
+  labels:
+    app: bmm
+spec:
+  selector:
+    app: bmm
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: bmm
+  namespace: bmm
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 20m
+    nginx.ingress.kubernetes.io/proxy-read-timeout: '300'
+    # cert-manager 自动签发证书时取消注释
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - bmm.example.com
+      secretName: bmm-tls
+  rules:
+    - host: bmm.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: bmm
+                port:
+                  number: 3000

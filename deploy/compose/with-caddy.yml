@@ -1,0 +1,54 @@
+# 示例编排：BMM + Caddy（自动 HTTPS），适合公网部署并启用 OIDC
+#   1) 把 BMM_DOMAIN 指向本机公网 IP
+#   2) cp .env.example .env && docker compose -f with-caddy.yml up -d
+name: bmm
+
+services:
+  bmm:
+    image: ${BMM_IMAGE:-ghcr.io/wu-hins/bmm}:${BMM_TAG:-latest}
+    container_name: bmm
+    restart: unless-stopped
+    environment:
+      DB_DRIVER: sqlite
+      DB_CONNECTION_URL: file:/app/data/sqlite.db
+      # 必须与 Caddy 域名一致，否则 OAuth/OIDC 回调会失败
+      AUTH_URL: https://${BMM_DOMAIN:?请在 .env 中设置 BMM_DOMAIN}
+      AUTH_SECRET: ${AUTH_SECRET:?请在 .env 中设置 AUTH_SECRET}
+      AUTH_OIDC_ISSUER: ${AUTH_OIDC_ISSUER:-}
+      AUTH_OIDC_ID: ${AUTH_OIDC_ID:-}
+      AUTH_OIDC_SECRET: ${AUTH_OIDC_SECRET:-}
+      AUTH_OIDC_NAME: ${AUTH_OIDC_NAME:-OIDC}
+    volumes:
+      - bmm-data:/app/data
+    expose:
+      - '3000'
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3000/api/health']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: bmm-caddy
+    restart: unless-stopped
+    depends_on:
+      bmm:
+        condition: service_started
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      BMM_DOMAIN: ${BMM_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  bmm-data:
+  caddy-data:
+  caddy-config:
