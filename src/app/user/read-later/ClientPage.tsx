@@ -31,7 +31,7 @@ import { useSetState } from 'ahooks'
 import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn'
 import relativeTime from 'dayjs/plugin/relativeTime'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 type ReadLaterItem = SelectUserReadLaterItem
 type Status = ReadLaterItem['status']
@@ -425,14 +425,15 @@ function ReadLaterEditButton(props: {
     summary: props.item.summary,
   })
 
-  useEffect(() => {
-    if (!isOpen) return
+  // 打开弹窗时从最新的 props 重置表单，避免在 effect 中同步状态
+  function openEditor() {
     setForm({
       icon: props.item.icon || '',
       title: props.item.title,
       summary: props.item.summary,
     })
-  }, [isOpen, props.item.icon, props.item.summary, props.item.title])
+    setIsOpen(true)
+  }
 
   async function handleSave() {
     const res = await runAction(
@@ -456,7 +457,7 @@ function ReadLaterEditButton(props: {
         isIconOnly
         tooltip="编辑"
         aria-label="编辑"
-        onPress={() => setIsOpen(true)}
+        onPress={openEditor}
         className="size-9 min-w-9"
       >
         <span className={cn(IconNames.Tabler.EDIT, 'text-lg')} />
