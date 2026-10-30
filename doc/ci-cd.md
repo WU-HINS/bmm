@@ -17,6 +17,7 @@
   ghcr.io/<owner>/bmm:ci-feat-oidc
   ```
 - Release 镜像同时打语义化版本与滚动标签，`latest` 随之指向该次发版。
+- 预发布版本（如 `v1.2.0-rc.1`，版本号含 `-`）只打 `v1.2.0-rc.1` / `1.2.0-rc.1` 两个精确标签，**不会**移动 `latest` 与主次版本滚动标签。
 
 ## 2. 原生多架构构建
 
@@ -68,6 +69,8 @@ bmm-<version>-linux-<arch>/
 ```
 
 用 `NEXT_OUTPUT=standalone` 触发 `next.config.js` 里的 `output: 'standalone'`，Docker 构建仍走完整产物，互不影响。
+
+打包时会做两件收尾：删除 `.next/standalone` 自动带上的 `.env*`（避免把仓库示例密钥发出去），并在缺少 `db/sqlite/*.sql` 时即时生成 SQLite 初始化 SQL。
 
 ```bash
 tar -xzf bmm-1.2.0-linux-amd64.tar.gz
