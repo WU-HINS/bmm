@@ -28,6 +28,8 @@ import {
   checkGithubOAuthConfig,
   deleteUserInput,
   extractHtmlInfoInput,
+  getOidcLoginConfig,
+  unbindOidcAccountInput,
   updateUserProfileInput,
 } from './items'
 import { makeAction as make } from './make-action'
@@ -148,3 +150,5 @@ export const actVerifyUser = make(CredentialsController.verify, { guard: false }
 export const actUpdateUserProfile = make(updateUserProfileInput)
 
 export const actCheckGithubOAuthConfig = make(checkGithubOAuthConfig, { guard: false })
+export const actGetOidcLoginConfig = make(getOidcLoginConfig, { guard: false })
+export const actUnbindOidcAccount = make(unbindOidcAccountInput)

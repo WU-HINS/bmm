@@ -16,6 +16,12 @@ export const Background = {
   DARK_CLASS: 'bg-[#06111b]',
 }
 
+/** 非页面类的接口地址 */
+export const ApiRoutes = {
+  /** 发起 OIDC 账户绑定，会重定向到 IdP 授权页 */
+  OIDC_LINK: '/api/auth/oidc/link',
+} as const
+
 export const PageRoutes = {
   INDEX: '/',
   LOGIN: '/login',

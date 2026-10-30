@@ -1,11 +1,26 @@
+import OidcBindingController from '@/controllers/OidcBinding.controller'
 import UserController from '@/controllers/User.controller'
 import { auth } from '@/lib/auth'
+import { OIDC_PROVIDER_ID, pickOidcPublicConfig, readOidcConfig } from '@/lib/auth/oidc-config'
 import { z, zodSchemas } from '@/lib/zod'
 import { robustUrl } from '@/utils'
 import { makeActionInput } from '../make-action'
 
 export async function checkGithubOAuthConfig() {
   return !!(process.env.AUTH_GITHUB_ID && process.env.AUTH_GITHUB_SECRET)
+}
+
+/** 登录页使用：是否展示 OIDC 登录入口，不返回任何密钥 */
+export async function getOidcLoginConfig() {
+  return pickOidcPublicConfig(readOidcConfig())
+}
+
+/** 解绑当前账户的 OIDC 身份 */
+async function unbindOidcAccount() {
+  const session = await auth()
+  if (!session?.user.id) throw new Error('请先登录')
+  await OidcBindingController.unbind(session.user.id, OIDC_PROVIDER_ID)
+  return true
 }
 
 const deleteUserSchema = z.object({
@@ -53,4 +68,10 @@ export const deleteUserInput = makeActionInput({
   schema: deleteUserSchema,
   guard: 'admin',
   name: 'deleteUser',
+})
+
+export const unbindOidcAccountInput = makeActionInput({
+  handler: unbindOidcAccount,
+  guard: 'user',
+  name: 'unbindOidcAccount',
 })

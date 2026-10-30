@@ -1,11 +1,15 @@
 'use client'
 
-import { actCheckGithubOAuthConfig, actRegisterUser, actVerifyUser } from '@/actions'
+import {
+  actCheckGithubOAuthConfig,
+  actGetOidcLoginConfig,
+  actRegisterUser,
+  actVerifyUser,
+} from '@/actions'
 import ReButton from '@/components/re-export/ReButton'
 import ReInput from '@/components/re-export/ReInput'
 import { z, zodSchemas } from '@/lib/zod'
 import { runAction } from '@/utils/client'
-import type { ErrorPageParam, SignInPageErrorParam } from '@auth/core/types'
 import { IconNames, PageRoutes, WEBSITE_NAME } from '@cfg'
 import { addToast, cn, Form, FormProps, Spinner } from '@heroui/react'
 import { useMount, useSetState } from 'ahooks'
@@ -24,16 +28,19 @@ export default function Page() {
 
   const [state, setState] = useSetState({
     isRedirecting: false,
+    redirectingName: 'Github',
     isRegisterMode: false,
     loginRegisterLoading: false,
     authError: null as null | { title: string; desc: string },
+    oidc: { enabled: false, name: 'OIDC', icon: null as string | null },
   })
   const [validationErrors, setValidationErrors] = useState<FormProps['validationErrors']>()
 
   const formRef = useRef<HTMLFormElement>(null)
 
   useMount(() => {
-    const error = searchParams.get('error') as null | SignInPageErrorParam | ErrorPageParam
+    // 除 Auth.js 内置错误码外，本项目还会返回自定义错误码（如 OidcEmailMissing），因此这里按字符串处理
+    const error = searchParams.get('error')
     const code = searchParams.get('code')
     const authError: typeof state.authError = { title: '', desc: '' }
     if (error === 'CredentialsSignin' && code === 'credentials') {
@@ -41,13 +48,25 @@ export default function Page() {
       authError.desc = '账号或密码错误，请检查后重试。'
     } else if (error === 'OAuthAccountNotLinked') {
       authError.title = '登录失败'
-      authError.desc = 'Github 账户邮箱已被注册，请直接使用账号密码登录，或更换 Github 账户。'
+      authError.desc =
+        '该第三方账号的邮箱已被本站其他登录方式占用。请先使用原有方式（账号密码 / Github / OIDC）登录，再到「个人资料 - 账号绑定」中完成绑定。'
+    } else if (error === 'OidcEmailMissing') {
+      authError.title = '登录失败'
+      authError.desc =
+        'OIDC 提供方未返回 email 声明，本站账号需要邮箱才能创建。请联系管理员为 IdP 补全 email scope 或邮箱映射。'
+    } else if (error === 'AccessDenied') {
+      authError.title = '登录失败'
+      authError.desc = '授权被拒绝，可能是您在授权页取消了操作，或该账号不被 IdP 允许登录本站。'
     } else if (error === 'Configuration') {
       authError.title = '登录失败'
       authError.desc =
-        '若您正在进行 Github 授权，可能是服务端请求 Github 服务器超时，可多次重试。若问题持续存在，请联系管理员查看服务日志或应用配置。'
+        '若您正在进行第三方授权，可能是服务端请求授权服务器超时，可多次重试。若问题持续存在，请联系管理员查看服务日志或应用配置。'
     }
     authError.title && setState({ authError })
+
+    runAction(actGetOidcLoginConfig()).then((res) => {
+      if (res.ok) setState({ oidc: res.data })
+    })
   })
 
   // 登录成功后，根据用户角色重定向到不同的页面
@@ -69,7 +88,16 @@ export default function Page() {
       return
     }
     await signIn('github')
-    setState({ isRedirecting: true })
+    setState({ isRedirecting: true, redirectingName: 'Github' })
+  }
+
+  async function handleOidcAuth() {
+    if (!state.oidc.enabled) {
+      addToast({ color: 'danger', description: '服务端未配置 OIDC 登录，暂无法使用该方式' })
+      return
+    }
+    await signIn('oidc')
+    setState({ isRedirecting: true, redirectingName: state.oidc.name })
   }
 
   function toggleRegisterMode() {
@@ -159,7 +187,9 @@ export default function Page() {
           {state.isRedirecting ? (
             <div className="border-divider bg-content2 mt-7 rounded-2xl border px-8 py-12 text-center">
               <Spinner color="current" size="lg" />
-              <p className="text-default-700 mt-6 text-sm font-medium">正在等待 Github 授权</p>
+              <p className="text-default-700 mt-6 text-sm font-medium">
+                正在等待 {state.redirectingName} 授权
+              </p>
             </div>
           ) : (
             <>
@@ -217,15 +247,40 @@ export default function Page() {
                 <div className="bg-divider h-px flex-1" />
               </div>
 
-              <ReButton
-                fullWidth
-                variant="bordered"
-                className="border-divider bg-content1 text-default-700 hover:bg-content2 h-11 rounded-xl font-medium shadow-sm shadow-black/5"
-                startContent={<span className={cn(IconNames.Mdi.GITHUB, 'text-xl')} />}
-                onClick={handleGithubAuth}
-              >
-                Github 授权登录
-              </ReButton>
+              <div className="flex flex-col gap-3">
+                <ReButton
+                  fullWidth
+                  variant="bordered"
+                  className="border-divider bg-content1 text-default-700 hover:bg-content2 h-11 rounded-xl font-medium shadow-sm shadow-black/5"
+                  startContent={<span className={cn(IconNames.Mdi.GITHUB, 'text-xl')} />}
+                  onClick={handleGithubAuth}
+                >
+                  Github 授权登录
+                </ReButton>
+
+                {state.oidc.enabled && (
+                  <ReButton
+                    fullWidth
+                    variant="bordered"
+                    className="border-divider bg-content1 text-default-700 hover:bg-content2 h-11 rounded-xl font-medium shadow-sm shadow-black/5"
+                    startContent={
+                      state.oidc.icon ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={state.oidc.icon}
+                          alt=""
+                          className="size-[18px] rounded object-contain"
+                        />
+                      ) : (
+                        <span className={cn(IconNames.Tabler.SHIELD_LOCK, 'text-xl')} />
+                      )
+                    }
+                    onClick={handleOidcAuth}
+                  >
+                    {state.oidc.name} 授权登录
+                  </ReButton>
+                )}
+              </div>
 
               {state.authError && (
                 <div

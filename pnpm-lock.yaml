@@ -86,6 +86,9 @@ importers:
       iconv-lite:
         specifier: 0.7.2
         version: 0.7.2
+      jose:
+        specifier: ^6.2.2
+        version: 6.2.2
       linkedom:
         specifier: ^0.18.12
         version: 0.18.12

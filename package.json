@@ -52,6 +52,7 @@
     "framer-motion": "^12.23.26",
     "i18next": "^24.2.3",
     "iconv-lite": "0.7.2",
+    "jose": "^6.2.2",
     "linkedom": "^0.18.12",
     "lodash": "^4.17.21",
     "motion": "^12.23.26",

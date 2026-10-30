@@ -14,6 +14,15 @@ declare global {
       | 'VERCEL' // 是否运行在 Vercel 平台中
       | 'AUTH_GITHUB_ID'
       | 'AUTH_GITHUB_SECRET'
+      | 'AUTH_GITHUB_ICON'
+      | 'AUTH_OIDC_ISSUER'
+      | 'AUTH_OIDC_ID'
+      | 'AUTH_OIDC_SECRET'
+      | 'AUTH_OIDC_NAME'
+      | 'AUTH_OIDC_ICON'
+      | 'AUTH_OIDC_SCOPES'
+      | 'AUTH_OIDC_PROMPT'
+      | 'AUTH_OIDC_TRUST_EMAIL'
     type RequiredVariables = 'DB_CONNECTION_URL'
     type ExtraVariables = Partial<Record<OptionalVariables, string>> &
       Record<RequiredVariables, string> & { DB_DRIVER: 'postgresql' | 'sqlite' } // 暂时只接入 postgresql 和 sqlite

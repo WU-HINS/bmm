@@ -2,22 +2,30 @@ import { Assets, PageRoutes } from '@cfg'
 import { NextAuthConfig } from 'next-auth'
 import { credentialsProvider } from './credentials-provider'
 import { githubProvider } from './github-provider'
+import { OIDC_PROVIDER_ID } from './oidc-config'
+import { createOidcProvider } from './oidc-provider'
+
+// 未配置 AUTH_OIDC_* 时返回 null，登录页与绑定入口都会自动隐藏
+const oidcProvider = createOidcProvider()
 
 // 这里没有配置 adapter，是为了兼容边缘环境
 // https://authjs.dev/guides/edge-compatibility
 export const authConfig = {
   // debug: true,
-  providers: [githubProvider, credentialsProvider],
+  providers: [githubProvider, credentialsProvider, ...(oidcProvider ? [oidcProvider] : [])],
   // session 1 天内有效，超过 1 天会自动更新；超过 30 天内没有任何操作，就会过期，useSession() auth() 返回 null
   session: { strategy: 'jwt', maxAge: 30 * 24 * 3600, updateAge: 24 * 3600 },
   pages: { signIn: PageRoutes.LOGIN, error: PageRoutes.LOGIN },
   theme: { logo: Assets.LOGO_SVG },
   // debug: true,
   callbacks: {
-    // signIn(params) {
-    //   console.log('[next-auth][callbacks.signIn]\n', params)
-    //   return true
-    // },
+    signIn(params) {
+      // ! IDP 未下发 email 时，创建账户会违反 user.email 的非空约束，这里提前给出可读的错误
+      if (params.account?.provider === OIDC_PROVIDER_ID && !params.user?.email) {
+        return PageRoutes.LOGIN + '?error=OidcEmailMissing'
+      }
+      return true
+    },
     // redirect(params) {
     //   console.log('[next-auth][callbacks.redirect]\n', params)
     //   return params.url
