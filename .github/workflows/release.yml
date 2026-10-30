@@ -1,0 +1,300 @@
+name: Release
+
+# 打 tag（v1.2.3）或手动触发：构建 amd64 / arm64 二进制包 + 多架构镜像，并发布 GitHub Release
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号（如 v1.2.0 或 1.2.0）'
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  NEXT_TELEMETRY_DISABLED: '1'
+
+jobs:
+  meta:
+    name: 解析版本
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      image: ${{ steps.version.outputs.image }}
+    steps:
+      - name: Resolve version
+        id: version
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            RAW="${{ inputs.version }}"
+          else
+            RAW="${{ github.ref_name }}"
+          fi
+          VERSION="${RAW#v}"
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$'; then
+            echo "::error::版本号格式不合法：$RAW（期望 v1.2.3 形式）"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "发布版本：v$VERSION"
+
+  binaries:
+    name: 二进制包 ${{ matrix.arch }}
+    needs: meta
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    env:
+      NEXT_OUTPUT: standalone
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.24.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # 在目标架构 runner 上构建，sharp 等原生依赖即为该架构的真实产物
+      - name: Build
+        run: pnpm build
+
+      - name: Package
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          PKG="bmm-${VERSION}-linux-${ARCH}"
+          rm -rf "dist/${PKG}"
+          mkdir -p "dist/${PKG}"
+
+          # Next.js standalone 运行时
+          cp -a .next/standalone/. "dist/${PKG}/"
+          mkdir -p "dist/${PKG}/.next"
+          cp -a .next/static "dist/${PKG}/.next/static"
+          cp -a public "dist/${PKG}/public"
+
+          # standalone 不含 drizzle-kit，把 SQLite 初始化 SQL 一并附上
+          if compgen -G "src/db/sqlite/migrations/production/*.sql" > /dev/null; then
+            mkdir -p "dist/${PKG}/db/sqlite"
+            cp src/db/sqlite/migrations/production/*.sql "dist/${PKG}/db/sqlite/"
+          fi
+
+          cat > "dist/${PKG}/README.txt" <<'EOF'
+          BMM ${PKG}
+          ===================
+
+          最低要求：Node.js >= 24
+
+          1) 准备环境变量（也可写进同级 .env）：
+             DB_DRIVER=sqlite
+             DB_CONNECTION_URL=file:./sqlite.db
+             AUTH_SECRET=<随机字符串>
+             AUTH_URL=https://your-domain.com
+
+          2) 初始化 SQLite（仅首次）：
+             sqlite3 sqlite.db < db/sqlite/0000_*.sql
+             使用 PostgreSQL / Turso 时，请从源码仓库执行 pnpm db:migrate
+
+          3) 启动：
+             PORT=3000 HOSTNAME=0.0.0.0 node server.js
+
+          说明：本包为 Next.js standalone 运行时，不含 pnpm / drizzle-kit。
+          EOF
+
+          tar -czf "dist/${PKG}.tar.gz" -C dist "${PKG}"
+          (cd dist && sha256sum "${PKG}.tar.gz" > "${PKG}.tar.gz.sha256")
+          ls -lh "dist/${PKG}.tar.gz"
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: binary-${{ matrix.arch }}
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  docker-build:
+    name: 构建镜像 ${{ matrix.arch }}
+    needs: meta
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          provenance: false
+          sbom: false
+          outputs: type=image,name=${{ needs.meta.outputs.image }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=release-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=release-${{ matrix.arch }}
+
+      - name: Export digest
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "$RUNNER_TEMP/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v7
+        with:
+          name: digest-release-${{ matrix.arch }}
+          path: "${ runner.temp }}/digests/*"
+          if-no-files-found: error
+          retention-days: 1
+
+  docker-merge:
+    name: 合并多架构镜像并打版本标签
+    needs: [meta, docker-build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v8
+        with:
+          path: "${ runner.temp }}/digests"
+          pattern: digest-release-*
+          merge-multiple: true
+
+      - name: Setup Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create release manifest
+        env:
+          IMAGE: ${{ needs.meta.outputs.image }}
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          MAJOR="${VERSION%%.*}"
+          MINOR="${VERSION%.*}"
+
+          sources=()
+          cd "${ runner.temp }}/digests"
+          for file in *; do
+            sources+=("${IMAGE}@sha256:${file}")
+          done
+
+          docker buildx imagetools create \
+            -t "${IMAGE}:v${VERSION}" \
+            -t "${IMAGE}:${VERSION}" \
+            -t "${IMAGE}:${MINOR}" \
+            -t "${IMAGE}:${MAJOR}" \
+            -t "${IMAGE}:latest" \
+            "${sources[@]}"
+
+          docker buildx imagetools inspect "${IMAGE}:${VERSION}"
+
+          {
+            echo "### 已发布镜像"
+            echo ""
+            echo "`${IMAGE}:${VERSION}`（同时打 `${MINOR}`、`${MAJOR}`、`latest`）"
+            echo ""
+            echo "架构：linux/amd64, linux/arm64（原生构建，无 QEMU）"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: 发布 GitHub Release
+    needs: [meta, binaries]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download binary artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          pattern: binary-*
+          merge-multiple: true
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.meta.outputs.tag }}
+          name: ${{ needs.meta.outputs.tag }}
+          generate_release_notes: true
+          append_body: true
+          body: |
+            ## 下载
+
+            | 平台 | 文件 |
+            | --- | --- |
+            | Linux amd64 | bmm-${{ needs.meta.outputs.version }}-linux-amd64.tar.gz |
+            | Linux arm64 | bmm-${{ needs.meta.outputs.version }}-linux-arm64.tar.gz |
+
+            解压后执行 `node server.js`，运行时要求 Node.js >= 24；首次使用 SQLite 需按包内 `README.txt` 初始化数据库。
+
+            ## 镜像
+
+            `~bash
+            docker pull ${{ needs.meta.outputs.image }}:${{ needs.meta.outputs.version }}
+            docker run -d -p 3000:3000 -v "$PWD/data:/app/data" -e DB_DRIVER=sqlite -e DB_CONNECTION_URL=file:/app/data/sqlite.db -e AUTH_SECRET=change-me -e AUTH_URL=https://your-domain.com ${{ needs.meta.outputs.image }}:${{ needs.meta.outputs.version }}
+            `~
+
+            镜像同时提供 `latest`、`X.Y`、`X` 标签，支持 linux/amd64 与 linux/arm64。
+          files: |
+            artifacts/*.tar.gz
+            artifacts/*.sha256
+          draft: false
+          prerelease: ${{ contains(needs.meta.outputs.version, '-') }}

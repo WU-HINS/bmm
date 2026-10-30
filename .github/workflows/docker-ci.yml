@@ -1,0 +1,138 @@
+name: Docker CI
+
+# 每次 push 都构建并推送 CI 镜像；不产生 latest（latest 只由 Release 工作流发布）
+on:
+  push:
+    branches: ['**']
+    tags-ignore: ['**']
+  workflow_dispatch:
+
+concurrency:
+  group: docker-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  NEXT_TELEMETRY_DISABLED: '1'
+
+jobs:
+  # 每个架构在原生 runner 上构建（arm64 走 GitHub 官方 arm64 runner，不使用 QEMU）
+  build:
+    name: 构建 ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve image name
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          provenance: false
+          sbom: false
+          outputs: type=image,name=${{ steps.image.outputs.name }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=ci-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=ci-${{ matrix.arch }}
+
+      - name: Export digest
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "$RUNNER_TEMP/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v7
+        with:
+          name: digest-ci-${{ matrix.arch }}
+          path: "${ runner.temp }}/digests/*"
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: 合并多架构索引并打 CI 标签
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v8
+        with:
+          path: "${ runner.temp }}/digests"
+          pattern: digest-ci-*
+          merge-multiple: true
+
+      - name: Setup Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create multi-arch manifest
+        id: manifest
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
+          SHORT_SHA="${GITHUB_SHA::7}"
+          BRANCH="${GITHUB_REF_NAME}"
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            BRANCH="tag-${GITHUB_REF_NAME}"
+          fi
+          BRANCH="${BRANCH//\//-}"
+          BRANCH="${BRANCH:0:48}"
+
+          sources=()
+          cd "${ runner.temp }}/digests"
+          for file in *; do
+            sources+=("${IMAGE}@sha256:${file}")
+          done
+
+          docker buildx imagetools create \
+            -t "${IMAGE}:ci-${SHORT_SHA}" \
+            -t "${IMAGE}:ci-${BRANCH}" \
+            "${sources[@]}"
+
+          {
+            echo "### Docker CI 镜像"
+            echo ""
+            echo "- `${IMAGE}:ci-${SHORT_SHA}`"
+            echo "- `${IMAGE}:ci-${BRANCH}`"
+            echo ""
+            echo "架构：linux/amd64, linux/arm64（原生构建，无 QEMU）"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Inspect manifest
+        run: docker buildx imagetools inspect "ghcr.io/${GITHUB_REPOSITORY,,}:ci-${GITHUB_SHA::7}"

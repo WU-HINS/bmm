@@ -18,6 +18,10 @@ export default async function setup(phase) {
 
   /** @type {import('next').NextConfig} */
   const nextConfig = {
+    // 发版工作流用 standalone 产物打「二进制包」，Docker 构建仍走完整产物
+    ...(process.env.NEXT_OUTPUT === 'standalone'
+      ? { output: 'standalone', outputFileTracingRoot: process.cwd() }
+      : {}),
     images: {
       remotePatterns: [
         {
