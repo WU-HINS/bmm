@@ -8,6 +8,8 @@
 | Docker CI | `.github/workflows/docker-ci.yml` | **每次 push**、手动 | 多架构镜像（GHCR） | `ci-<短 SHA>`、`ci-<分支名>`，**不含 latest** |
 | Release | `.github/workflows/release.yml` | tag `v*.*.*`、手动 | amd64/arm64 二进制包 + 多架构镜像 + GitHub Release | `vX.Y.Z`、`X.Y.Z`、`X.Y`、`X`、`latest` |
 
+> 镜像的使用示例（compose / k8s 编排、OIDC 接线、备份与回滚）见 [`deploy/README.md`](../deploy/README.md)。
+
 ## 1. 镜像标签策略
 
 - **CI 镜像永远不带 `latest`**：`latest` 只由 Release 工作流发布，避免「任意一次 push 覆盖正式标签」。

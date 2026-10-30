@@ -206,6 +206,27 @@ The project uses Vercel AI SDK with an OpenAI-compatible provider. After signing
 
 Supported options include OpenAI-compatible providers such as OpenAI, DeepSeek, Moonshot, and GLM. For non OpenAI-compatible services, refer to [AI SDK Providers](https://ai-sdk.dev/providers/ai-sdk-providers).
 
+<a id="deploy-examples"></a>
+
+## Deployment Examples
+
+[`deploy/`](./deploy/) ships four ready-to-use orchestrations, all multi-arch (amd64/arm64):
+
+| Scenario | File |
+| --- | --- |
+| Single-node SQLite | [`deploy/compose/sqlite.yml`](./deploy/compose/sqlite.yml) |
+| App + PostgreSQL | [`deploy/compose/postgres.yml`](./deploy/compose/postgres.yml) |
+| App + Caddy (auto HTTPS, OIDC ready) | [`deploy/compose/with-caddy.yml`](./deploy/compose/with-caddy.yml) |
+| Kubernetes (Deployment / Service / Ingress / probes) | [`deploy/k8s/`](./deploy/k8s/) |
+
+```bash
+cd deploy/compose
+cp .env.example .env          # set AUTH_URL and AUTH_SECRET
+docker compose -f sqlite.yml up -d
+```
+
+Health endpoints: `GET /api/health` (liveness, no database access) and `GET /api/health/deep` (readiness, includes a database probe, 503 on failure; `/api/health?deep=1` also works). See [`deploy/README.md`](./deploy/README.md).
+
 <a id="ci-cd"></a>
 
 ## CI / CD

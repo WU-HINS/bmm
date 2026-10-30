@@ -206,6 +206,27 @@ AI 能力用于减少书签录入与整理的手工操作，当前主要覆盖�
 
 支持范围包括 OpenAI-compatible 提供商，例如 OpenAI、DeepSeek、Moonshot、GLM 等。若接入非 OpenAI-compatible 服务，可参考 [AI SDK Providers](https://ai-sdk.dev/providers/ai-sdk-providers)。
 
+<a id="deploy-examples"></a>
+
+## 部署示例编排
+
+[`deploy/`](./deploy/) 提供四套可直接使用的编排示例，镜像均为 amd64/arm64 多架构：
+
+| 场景 | 文件 |
+| --- | --- |
+| 单机 SQLite | [`deploy/compose/sqlite.yml`](./deploy/compose/sqlite.yml) |
+| 应用 + PostgreSQL | [`deploy/compose/postgres.yml`](./deploy/compose/postgres.yml) |
+| 应用 + Caddy 自动 HTTPS（含 OIDC 接线） | [`deploy/compose/with-caddy.yml`](./deploy/compose/with-caddy.yml) |
+| Kubernetes（Deployment / Service / Ingress / 探针） | [`deploy/k8s/`](./deploy/k8s/) |
+
+```bash
+cd deploy/compose
+cp .env.example .env          # 填 AUTH_URL 与 AUTH_SECRET
+docker compose -f sqlite.yml up -d
+```
+
+健康检查端点：`GET /api/health`（存活，不访问数据库）、`GET /api/health/deep`（就绪，含数据库探测，失败返回 503；亦可写作 `/api/health?deep=1`）。详见 [`deploy/README.md`](./deploy/README.md)。
+
 <a id="ci-cd"></a>
 
 ## CI / CD
