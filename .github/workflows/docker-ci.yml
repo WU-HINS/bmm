@@ -74,7 +74,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: digest-ci-${{ matrix.arch }}
-          path: "${ runner.temp }}/digests/*"
+          path: "${{ runner.temp }}/digests/*"
           if-no-files-found: error
           retention-days: 1
 
@@ -87,7 +87,7 @@ jobs:
       - name: Download digests
         uses: actions/download-artifact@v8
         with:
-          path: "${ runner.temp }}/digests"
+          path: "${{ runner.temp }}/digests"
           pattern: digest-ci-*
           merge-multiple: true
 
@@ -115,7 +115,7 @@ jobs:
           BRANCH="${BRANCH:0:48}"
 
           sources=()
-          cd "${ runner.temp }}/digests"
+          cd "${{ runner.temp }}/digests"
           for file in *; do
             sources+=("${IMAGE}@sha256:${file}")
           done
