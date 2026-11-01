@@ -83,6 +83,9 @@ spec:
               value: '3000'
             - name: HOSTNAME
               value: '0.0.0.0'
+            # V8 内存上限：稳态 ~200MB、峰值 ~240MB；容器限额 512Mi
+            - name: NODE_OPTIONS
+              value: '--max-old-space-size=384 --max-semi-space-size=8'
           startupProbe:
             httpGet:
               path: /api/health
@@ -104,10 +107,11 @@ spec:
             timeoutSeconds: 5
           resources:
             requests:
-              cpu: 100m
+              cpu: 250m
               memory: 256Mi
             limits:
-              memory: 1Gi
+              cpu: '1'
+              memory: 512Mi
 ---
 apiVersion: v1
 kind: Service

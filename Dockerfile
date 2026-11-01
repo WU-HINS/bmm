@@ -38,6 +38,9 @@ FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
+# V8 内存上限：压测稳态约 200MB、峰值约 240MB（详见 doc/performance.md）
+# 需要更大堆时在运行时覆盖该变量即可
+ENV NODE_OPTIONS="--max-old-space-size=384 --max-semi-space-size=8"
 ENV HOSTNAME="0.0.0.0"
 # zx 依赖 bash
 RUN apk add bash

@@ -8,6 +8,8 @@ services:
     container_name: bmm-postgres
     restart: unless-stopped
     environment:
+      # V8 内存上限：稳态 ~200MB、峰值 ~240MB，配合 512Mi 容器限额
+      NODE_OPTIONS: '--max-old-space-size=384 --max-semi-space-size=8'
       POSTGRES_DB: ${POSTGRES_DB:-bmm}
       POSTGRES_USER: ${POSTGRES_USER:-bmm}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 中设置 POSTGRES_PASSWORD}

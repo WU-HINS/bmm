@@ -18,6 +18,8 @@ export default async function setup(phase) {
 
   /** @type {import('next').NextConfig} */
   const nextConfig = {
+    // 压测对照：内置 gzip 的 CPU/内存开销 vs 交给反向代理压缩
+    compress: process.env.NEXT_COMPRESS !== '0',
     // 发版工作流用 standalone 产物打「二进制包」，Docker 构建仍走完整产物
     ...(process.env.NEXT_OUTPUT === 'standalone'
       ? { output: 'standalone', outputFileTracingRoot: process.cwd() }

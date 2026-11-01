@@ -11,6 +11,8 @@ services:
     ports:
       - "${BMM_PORT:-3000}:3000"
     environment:
+      # V8 内存上限：稳态 ~200MB、峰值 ~240MB，配合 512Mi 容器限额
+      NODE_OPTIONS: '--max-old-space-size=384 --max-semi-space-size=8'
       # ---- 运行时 ----
       DB_DRIVER: sqlite
       DB_CONNECTION_URL: file:/app/data/sqlite.db
