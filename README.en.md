@@ -235,8 +235,8 @@ Methodology and results: [`doc/performance.md`](./doc/performance.md); scripts i
 
 Highlights (4 vCPU / SQLite / single-process `next start`):
 
-- Smaller first page (home 240 → 60, tag page 600 → 120) cuts home CPU per request from 265ms to 90~114ms, response size from 894KB to 306KB, and raises per-replica throughput from 4.3 to 8.8~12.3 RPS;
-- Moving `/tags` from an in-page `redirect()` to a router-level redirect took it from 31.8 to 2554 RPS;
+- Two rounds of optimization (page size 240/600 → 60/120, slimmer card markup, TTL cache on the read path, indexes) cut home CPU per request from 265ms to **52.7ms**, response size from 894KB to **275KB**, and raise per-replica throughput from 4.3 to **19~24 RPS**;
+- Moving `/tags` from an in-page `redirect()` to a router-level redirect took it from 31.8 to **1555~2554 RPS**;
 - A single replica is capped at roughly one CPU core — **scale out with replicas**.
 
 ```bash
