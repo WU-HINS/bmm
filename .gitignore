@@ -40,4 +40,8 @@ next-env.d.ts
 src/db/*/migrations
 
 sqlite.db
+perf.db
+perf.db-*
+.perf-results.json
+bench/.perf-results.json
 local.d.ts

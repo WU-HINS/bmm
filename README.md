@@ -227,6 +227,24 @@ docker compose -f sqlite.yml up -d
 
 健康检查端点：`GET /api/health`（存活，不访问数据库）、`GET /api/health/deep`（就绪，含数据库探测，失败返回 503；亦可写作 `/api/health?deep=1`）。详见 [`deploy/README.md`](./deploy/README.md)。
 
+<a id="performance"></a>
+
+## 性能
+
+压测方法与结论见 [`doc/performance.md`](./doc/performance.md)，脚本在 [`bench/`](./bench/)。
+
+实测要点（4 vCPU / SQLite / `next start` 单进程）：
+
+- 首屏条目数下调（首页 240 → 60、标签页 600 → 120）后，首页单请求 CPU 265ms → 90~114ms，响应体积 894KB → 306KB，单副本吞吐 4.3 → 8.8~12.3 RPS；
+- `/tags` 从页面内 `redirect()` 改为路由层重定向后，吞吐 31.8 → 2554 RPS；
+- 单副本 CPU 上限约 1 核，**扩容靠多副本**。
+
+```bash
+node bench/seed.mjs                       # 造压测数据（perf.db）
+node bench/run.mjs --server-pid <pid>     # 全场景压测
+node bench/run.mjs --mode ramp --only /   # 并发梯度
+```
+
 <a id="ci-cd"></a>
 
 ## CI / CD

@@ -227,6 +227,24 @@ docker compose -f sqlite.yml up -d
 
 Health endpoints: `GET /api/health` (liveness, no database access) and `GET /api/health/deep` (readiness, includes a database probe, 503 on failure; `/api/health?deep=1` also works). See [`deploy/README.md`](./deploy/README.md).
 
+<a id="performance"></a>
+
+## Performance
+
+Methodology and results: [`doc/performance.md`](./doc/performance.md); scripts in [`bench/`](./bench/).
+
+Highlights (4 vCPU / SQLite / single-process `next start`):
+
+- Smaller first page (home 240 → 60, tag page 600 → 120) cuts home CPU per request from 265ms to 90~114ms, response size from 894KB to 306KB, and raises per-replica throughput from 4.3 to 8.8~12.3 RPS;
+- Moving `/tags` from an in-page `redirect()` to a router-level redirect took it from 31.8 to 2554 RPS;
+- A single replica is capped at roughly one CPU core — **scale out with replicas**.
+
+```bash
+node bench/seed.mjs                       # seed perf.db
+node bench/run.mjs --server-pid <pid>     # full suite
+node bench/run.mjs --mode ramp --only /   # concurrency ramp
+```
+
 <a id="ci-cd"></a>
 
 ## CI / CD

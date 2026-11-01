@@ -9,6 +9,8 @@
     "start": "tsx scripts/db-init.mjs -P && next start",
     "lint": "eslint .",
     "test": "vitest",
+    "bench": "node bench/run.mjs",
+    "bench:seed": "node bench/seed.mjs",
     "studio": "drizzle-kit studio",
     "检测数据库能否连接": "⬇️",
     "db:test": "tsx scripts/db-test.mjs",
