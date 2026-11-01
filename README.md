@@ -237,7 +237,7 @@ docker compose -f sqlite.yml up -d
 
 - 两轮优化（页大小 240/600 → 60/120、卡片标记瘦身、读路径 TTL 缓存、索引）后，首页单请求 CPU 265ms → **52.7ms**，响应体积 894KB → **275KB**，单副本吞吐 4.3 → **19~24 RPS**；
 - `/tags` 从页面内 `redirect()` 改为路由层重定向后，吞吐 31.8 → **1555~2554 RPS**；
-- 单副本 CPU 上限约 1 核，**扩容靠多副本**；内存稳态 250~290MB、64 并发突发峰值约 360MB、连续压测无泄漏（建议 requests 256Mi / limits 512Mi）。
+- 单副本 CPU 上限约 1 核，**扩容靠多副本**；内存稳态 200~250MB、64 并发突发峰值约 360MB、连续压测无泄漏；部署默认带 `--max-old-space-size=384 --max-semi-space-size=8`，峰值约 240MB（建议 requests 256Mi / limits 512Mi）。
 
 ```bash
 node bench/seed.mjs                       # 造压测数据（perf.db）

@@ -286,6 +286,37 @@ node bench/run.mjs --mode ramp --connections 1,2,4,8,16 --only /
 2. **限容**：`MAX_ENTRIES = 128`，超限时先清扫过期项、再按插入顺序淘汰最旧条目；
 3. **过期清扫**：每 30s 扫一次过期 key，避免「只写不读」的 key 永久驻留。
 
+### 参数调优对照（同一构建、30s × 8 并发）
+
+V8 的堆上限与新生代（semi-space）大小是唯一能在不改代码的前提下影响常驻内存的旋钮：
+
+| 参数 | 空闲 RSS | 负载均值 | 负载峰值 | RPS |
+| --- | --- | --- | --- | --- |
+| 默认（heap 512 / semi 16） | 202 MB | 253 MB | **265 MB** | 28.1 |
+| `--max-old-space-size=384 --max-semi-space-size=8` | 187 MB | 233 MB | **240 MB** | 26.5 |
+| `--max-old-space-size=256 --max-semi-space-size=4` | 175 MB | 212 MB | 222 MB | 16.8 |
+| `--max-old-space-size=256 --max-semi-space-size=2` | 170 MB | 202 MB | 212 MB | 16.6 |
+| 上面 + `--optimize-for-size`（需作为 node 参数，不能进 NODE_OPTIONS） | 168 MB | 180 MB | 195 MB | 13.2 |
+
+> RPS 受同机压测客户端抢占影响，单次数字有 ±20% 波动；A/B 复测（各 2 轮）显示 semi 2 相对默认约 **-20% 吞吐**，semi 8 基本持平。
+
+结论与选型：
+
+| 场景 | 建议参数 | 内存 | 吞吐 |
+| --- | --- | --- | --- |
+| 默认部署（推荐） | `--max-old-space-size=384 --max-semi-space-size=8` | 峰值 ~240 MB（-10%） | 基本不变 |
+| 256 Mi 小容器 | `--max-old-space-size=192 --max-semi-space-size=2` | 峰值 ~210 MB | 约 -20% |
+| 128 Mi 容器 | 不建议 | 启动即 ~136 MB | — |
+
+> 另有一个与内存无关但影响吞吐的开关：`NEXT_COMPRESS=0` 可关闭 Next 内置 gzip（交给 Caddy/Nginx 压缩），实测吞吐 +15%，代价是源站出网带宽上升约 7 倍。默认保持开启。
+
+### 为什么压不到 150 MB 以下
+
+- **框架地板**：Next.js 16 + React 19 的服务端模块图在 `heapUsed` 约 80~110 MB，加上 Node 运行时与原生库，空闲 RSS 就到了 195~205 MB；
+- **UI 库不是主因**：做过对照实验，去掉根布局里的 antd `ConfigProvider` 后 RSS 只降 **约 8 MB**（antd 的 Tree/Progress 是页面级懒渲染），不值得为此重构；
+- **并发是峰值主因**：每个在途 SSR 请求约 2~4 MB（渲染树 + 275KB HTML 字符串），64 并发时峰值到 358 MB；
+- 因此「内存优先」只能靠 **更小的页 + 更小的堆 + 更多副本**，而不是继续抠代码。
+
 ### 容器资源建议
 
 | 资源 | 建议值 | 依据 |

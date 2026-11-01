@@ -156,4 +156,5 @@ kubectl -n bmm rollout undo deploy/bmm    # 回滚
 | `manifest unknown` | 标签写错（如尚未发版就用了 `v1.2.0`） | 先用 `latest` 或 `ci-<sha>` |
 | 拉镜像 401 | GHCR 包为私有 | `docker login ghcr.io`，k8s 配 `imagePullSecrets` |
 | 健康检查一直 unhealthy | 端口/启动时间不足 | 已给 `start_period: 40s`；慢机器可调大 |
+| 内存占用偏高 | 默认 V8 堆上限较大 | 编排里已设 `NODE_OPTIONS=--max-old-space-size=384 --max-semi-space-size=8`（峰值约 240MB）；要更省内存见 [`doc/performance.md`](../doc/performance.md) 第 9 节 |
 | readiness 一直失败但容器没崩 | 数据库不可达或未建表 | `curl -i http://<pod-ip>:3000/api/health/deep` 看返回体 |
