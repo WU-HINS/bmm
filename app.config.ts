@@ -308,8 +308,8 @@ export const ExternalLinks = {
 } as const
 
 /** 默认情况下每页获取的书签个数；出于栅格布局的考虑它应该是 3 4 的公倍数 */
-export const DEFAULT_BOOKMARK_PAGESIZE = 3 * 4 * 20
-export const DEFAULT_PUBLIC_TAG_PAGESIZE = 3 * 4 * 50
+export const DEFAULT_BOOKMARK_PAGESIZE = 3 * 4 * 5
+export const DEFAULT_PUBLIC_TAG_PAGESIZE = 3 * 4 * 10
 
 export const FieldConstraints = {
   MaxLen: {

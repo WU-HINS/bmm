@@ -42,6 +42,10 @@ export default async function setup(phase) {
     experimental: {
       serverActions: { allowedOrigins: [domainHost] }
     },
+    // /tags 只是首页的别名：放到路由层重定向，避免为一次跳转付出整页 SSR 的 CPU
+    async redirects() {
+      return [{ source: '/tags', destination: '/', permanent: false }]
+    },
     typescript: {
       ignoreBuildErrors: Boolean(process.env.IGNORE_BUILD_ERRORS),
     },
