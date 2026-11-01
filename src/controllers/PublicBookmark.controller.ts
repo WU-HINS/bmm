@@ -219,9 +219,17 @@ const PublicBookmarkController = {
   async getCheckHostsTask() {
     return await BookmarkHostCheckController.getPublicCheckHostsTask()
   },
-  /** 高级搜索书签列表（20s 进程内缓存，写操作即时失效） */
+  /**
+   * 高级搜索书签列表（20s 进程内缓存，写操作即时失效）
+   *
+   * ! 关键词搜索属于长尾输入（爬虫/用户可任意构造），不进缓存，避免 key 无限增长；
+   *   首页、标签页等按固定参数访问的列表才缓存。
+   */
   async findMany(query?: z.output<typeof findManyBookmarksSchema>) {
     const normalized = query || findManyBookmarksSchema.parse({})
+    if (normalized.keyword) {
+      return await PublicBookmarkController.findManyUncached(normalized)
+    }
     return await cached(
       'public:bookmarks:' + JSON.stringify(normalized),
       20_000,
