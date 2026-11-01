@@ -237,7 +237,7 @@ Highlights (4 vCPU / SQLite / single-process `next start`):
 
 - Two rounds of optimization (page size 240/600 → 60/120, slimmer card markup, TTL cache on the read path, indexes) cut home CPU per request from 265ms to **52.7ms**, response size from 894KB to **275KB**, and raise per-replica throughput from 4.3 to **19~24 RPS**;
 - Moving `/tags` from an in-page `redirect()` to a router-level redirect took it from 31.8 to **1555~2554 RPS**;
-- A single replica is capped at roughly one CPU core — **scale out with replicas**.
+- A single replica is capped at roughly one CPU core — **scale out with replicas**; memory stays at 250~290MB (peak ~360MB at 64-way concurrency) with no leak under sustained load (recommended requests 256Mi / limits 512Mi).
 
 ```bash
 node bench/seed.mjs                       # seed perf.db

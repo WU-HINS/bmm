@@ -31,4 +31,14 @@ node bench/run.mjs --only 公开首页 --duration 30
 | `--only` | 只跑指定场景（按名称或完整路径匹配） |
 | `--mode ramp` | 并发梯度模式 |
 
+内存采样：
+
+```bash
+node bench/memory.mjs --pid <pid>                                   # 空闲基线
+node bench/memory.mjs --pid <pid> --path / --connections 8 --duration 20
+node bench/memory.mjs --pid <pid> --path / --rounds 6 --duration 10  # 泄漏判定
+```
+
+输出 `VmRSS` / `VmHWM` / 线程数，用于判断稳态内存、突发峰值与是否存在随轮次增长。
+
 > 压测客户端与服务端同机运行时，两者会抢同一组 CPU；绝对值偏保守，横向对比有效。

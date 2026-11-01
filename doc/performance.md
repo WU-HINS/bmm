@@ -252,10 +252,54 @@ HOSTNAME=127.0.0.1 AUTH_URL=http://127.0.0.1:3500 \
 node bench/run.mjs --server-pid $(pgrep -f next-server | head -1)
 node bench/run.mjs --mode ramp --connections 1,2,4,8,16 --only /
 ```
+---
+
+## 9. 内存占用
+
+测量方式：`bench/memory.mjs` 每 500ms 采样 `/proc/<pid>/status` 的 `VmRSS`（当前常驻）与 `VmHWM`（历史峰值），服务端以 `NODE_OPTIONS=--max-old-space-size=512` 运行。
+
+| 阶段 | 请求数 | RPS | RSS 均值 | RSS 峰值 | HWM 峰值 |
+| --- | --- | --- | --- | --- | --- |
+| 启动后（未预热） | - | - | 136 MB | 136 MB | 136 MB |
+| 预热后空闲 | - | - | 165~195 MB | 195 MB | 195 MB |
+| `/api/health` 16 并发 | 8,077 | 403.3 | 228 MB | 238 MB | 241 MB |
+| 首页 8 并发 | 438 | 21.7 | 268 MB | 279 MB | 280 MB |
+| 首页 **64 并发突发** 10s | 256 | 22.4 | 316 MB | **358 MB** | 357 MB |
+
+结论：
+
+- **单副本稳定在 250~290 MB**，突发峰值 **~360 MB**；吞吐提升不额外增加稳态内存（RSS 主要由 Next 运行时 + V8 堆决定）。
+- **无泄漏**：首页连续 6 轮（每轮 10s、8 并发）结束后 RSS 从 274.0 → 277.1 MB，仅 **+3.2 MB**，属于堆碎片/惰性回收，不随轮次线性增长。
+- 内存主要由「并发中的 SSR 渲染」驱动：8 并发 → +28 MB，64 并发 → +110 MB。
+
+### 压测暴露并修复的问题：缓存长尾 key
+
+第一版 TTL 缓存（`findMany` 按查询参数做 key）没有限容，被压测直接打爆：
+
+| 场景 | 修复前 | 修复后 |
+| --- | --- | --- |
+| 1500 个不同 `?keyword=` 请求 | RSS **+72 MB**，且 TTL 过期后不回落 | RSS **+7 MB**（GC 内即可回收） |
+
+修复（[lib/ttl-cache.ts](../src/lib/ttl-cache.ts)）：
+
+1. **长尾不入缓存**：`findMany` 只在没有 `keyword` 时缓存（首页、标签页等固定参数），关键词搜索直接查库；
+2. **限容**：`MAX_ENTRIES = 128`，超限时先清扫过期项、再按插入顺序淘汰最旧条目；
+3. **过期清扫**：每 30s 扫一次过期 key，避免「只写不读」的 key 永久驻留。
+
+### 容器资源建议
+
+| 资源 | 建议值 | 依据 |
+| --- | --- | --- |
+| requests.memory | 256 Mi | 稳态 250~290 MB 的下限侧 |
+| limits.memory | 512 Mi | 突发峰值 358 MB + 余量 |
+| `NODE_OPTIONS` | `--max-old-space-size=384` | 让 V8 在容器 OOM 之前先自己回收 |
+| requests.cpu / limits.cpu | 500m ~ 1000m | 单副本吃满 1 核（见第 3.3 节） |
+
+3 副本 × 512 Mi ≈ 1.5 GiB，可在 2 GiB 节点上跑 3 副本。
 
 ---
 
-## 9. 局限
+## 10. 局限
 
 1. **同机压测**：客户端与服务端抢同一组 4 vCPU，绝对 RPS 偏低，延迟含客户端排队；
 2. **SQLite 单文件**：未覆盖 PostgreSQL / Turso 的连接池与网络开销；
