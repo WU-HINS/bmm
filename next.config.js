@@ -46,6 +46,16 @@ export default async function setup(phase) {
     async redirects() {
       return [{ source: '/tags', destination: '/', permanent: false }]
     },
+    // public/ 下的静态资源默认是 max-age=0，这里给一个较长的浏览器缓存
+    async headers() {
+      const staticAssets = ['/logo.svg', '/logo-no-bg.svg', '/box-empty.png']
+      return staticAssets.map((source) => ({
+        source,
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=604800, stale-while-revalidate=86400' },
+        ],
+      }))
+    },
     typescript: {
       ignoreBuildErrors: Boolean(process.env.IGNORE_BUILD_ERRORS),
     },

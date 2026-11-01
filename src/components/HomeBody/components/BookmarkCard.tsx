@@ -1,8 +1,6 @@
 import Favicon from '@/components/Favicon'
-import { useIsMobile } from '@/hooks'
 import { useOnClickTag } from '@/hooks/useOnClickTag'
 import { getTagLinkAttrs } from '@/utils'
-import { Chip, Tooltip } from '@heroui/react'
 import { useHomePageContext } from '../ctx'
 
 interface Props extends SelectBookmark {
@@ -12,18 +10,22 @@ interface Props extends SelectBookmark {
   onEdit?: () => void
 }
 
+/**
+ * 书签卡片
+ *
+ * ! 这张卡片每个页面要渲染几十次，标记体积直接影响 SSR CPU 与传输体积：
+ * ! 标签胶囊用原生 <a>（而不是 Chip 组件）、描述悬浮提示用原生 title（而不是 Tooltip 组件）
+ */
 export default function BookmarkCard(props: Props) {
   const { tags } = useHomePageContext()
   const { onClickTag } = useOnClickTag({ tags })
-  const isMobile = useIsMobile()
 
   const generateLinkTitle = () => {
-    const baseTitle = `${props.name} - ${props.description}`
-    // 加入标签信息增强相关性
+    const baseTitle = `${props.name} - ${props.description || ''}`
     const tagNames = props.relatedTagIds
       .map((id) => tags.find((tag) => tag.id === id)?.name)
       .filter(Boolean)
-    return tagNames.length ? `${baseTitle} (标签: ${tagNames.join(', ')})` : baseTitle
+    return tagNames.length ? `${baseTitle} (${tagNames.join(', ')})` : baseTitle
   }
 
   return (
@@ -46,41 +48,21 @@ export default function BookmarkCard(props: Props) {
           </h3>
         </div>
       </a>
+
       <div className="min-h-10">
-        {(() => {
-          const desc = props.description
-          if (!desc) {
-            return <p className="text-default-400 text-xs leading-5.5">打开站点查看详情与内容。</p>
-          }
-          const node = (
-            <p
-              className="text-foreground-500 line-clamp-3 text-xs leading-5.5 break-all"
-              role="description"
-            >
-              {desc}
-            </p>
-          )
-          if (isMobile) return node
-          return (
-            <p
-              className="text-foreground-500 line-clamp-3 text-xs leading-5.5 break-all"
-              role="description"
-            >
-              <Tooltip
-                delay={500}
-                content={
-                  <span className="break-all">
-                    {props.name}：{desc}
-                  </span>
-                }
-                className="max-w-80"
-              >
-                <span>{desc}</span>
-              </Tooltip>
-            </p>
-          )
-        })()}
+        {props.description ? (
+          <p
+            className="text-foreground-500 line-clamp-3 text-xs leading-5.5 break-all"
+            role="description"
+            title={`${props.name}：${props.description}`}
+          >
+            {props.description}
+          </p>
+        ) : (
+          <p className="text-default-400 text-xs leading-5.5">打开站点查看详情与内容。</p>
+        )}
       </div>
+
       <div
         className="scrollbar-hide flex max-w-full grow items-end gap-1.5 overflow-auto pt-0.5"
         aria-label="相关标签"
@@ -89,16 +71,14 @@ export default function BookmarkCard(props: Props) {
           const tag = tags.find((tag) => tag.id === id)
           if (!tag) return null
           return (
-            <Chip
+            <a
               key={tag.id}
-              variant="flat"
-              as="a"
               {...getTagLinkAttrs(tag)}
-              onClick={(event) => onClickTag({ tag, event: event as any })}
-              className="text-foreground-500 xs:hover:text-foreground-700 h-6 cursor-pointer border-none bg-slate-200/42 px-2 text-xs transition active:opacity-50 dark:bg-content2/36"
+              className="text-foreground-500 xs:hover:text-foreground-700 h-6 shrink-0 rounded-full bg-slate-200/42 px-2 text-xs leading-6 whitespace-nowrap transition active:opacity-50 dark:bg-content2/36"
+              onClick={(event) => onClickTag({ tag, event })}
             >
               {tag.name}
-            </Chip>
+            </a>
           )
         })}
       </div>

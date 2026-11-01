@@ -126,8 +126,9 @@ export function pageSpace(urlOrPath?: 'auto' | (string & {}) | null) {
 }
 
 export function getTagLinkAttrs(tag: SelectTag): Pick<HTMLAnchorElement, 'href' | 'title'> {
+  // title 会在列表里重复出现，只保留最短的必要文案，避免撑大页面体积
   return {
     href: PageRoutes.Public.tags([tag.name]),
-    title: [tag.name + '相关的网站', tag.name + '资源', tag.name + '网站推荐'].join(', '),
+    title: tag.name + '相关的网站',
   }
 }

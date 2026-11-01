@@ -85,6 +85,8 @@ export const userBookmarks = pgTable(
     unique().on(table.name, table.userId),
     unique().on(table.userId, table.url),
     index('userBookmarks_hostKey_idx').on(table.hostKey),
+    // 用户空间同样按 updatedAt 倒序取列表
+    index('userBookmarks_updatedAt_idx').on(table.updatedAt),
   ]
 )
 

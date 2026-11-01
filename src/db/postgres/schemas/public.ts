@@ -80,7 +80,11 @@ export const publicBookmarks = pgTable('publicBookmarks', {
   updatedAt: timestamp('updatedAt', { mode: 'date' })
     .notNull()
     .$defaultFn(() => new Date()),
-}, (table) => [index('publicBookmarks_hostKey_idx').on(table.hostKey)])
+}, (table) => [
+    index('publicBookmarks_hostKey_idx').on(table.hostKey),
+    // 默认按 updatedAt 排序取首页列表
+    index('publicBookmarks_updatedAt_idx').on(table.updatedAt),
+  ])
 
 export const bookmarkHostChecks = pgTable('bookmarkHostChecks', {
   hostKey: varchar('hostKey', { length: FieldConstraints.MaxLen.URL }).primaryKey(),

@@ -73,6 +73,8 @@ export const userBookmarks = sqliteTable(
     unique().on(table.url, table.userId),
     unique().on(table.name, table.userId),
     index('userBookmarks_hostKey_idx').on(table.hostKey),
+    // 用户空间同样按 updatedAt 倒序取列表
+    index('userBookmarks_updatedAt_idx').on(table.updatedAt),
   ]
 )
 

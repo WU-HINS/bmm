@@ -6,6 +6,7 @@
 # 1) 造数据（会清空 perf.db 的业务表）
 cp sqlite.db perf.db
 DB_CONNECTION_URL=file:./perf.db node bench/seed.mjs
+node bench/apply-index.mjs          # 让 perf.db 与最新 schema（含 updatedAt 索引）一致
 
 # 2) 启动被测服务
 pnpm build

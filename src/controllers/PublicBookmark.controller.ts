@@ -9,6 +9,7 @@ import BookmarkHostCheckController, {
   getBookmarkHostKey,
   withBookmarkHostCheckSummaries,
 } from './BookmarkHostCheck.controller'
+import { cached, invalidateCache } from '@/lib/ttl-cache'
 import { createBookmarkFilterByKeyword } from './common'
 import PublicTagController from './PublicTag.controller'
 import { findManyBookmarksSchema } from './schemas'
@@ -73,6 +74,7 @@ async function createFindManyFilters(query: z.output<typeof findManyBookmarksSch
 
 const PublicBookmarkController = {
   async insert(bookmark: InsertPublicBookmark) {
+    invalidateCache('public:')
     const { relatedTagIds, ...resetBookmark } = bookmark
     // 插入之前先检查当前用户是否有相同网址或名称的记录
     const count = await db.$count(
@@ -101,6 +103,7 @@ const PublicBookmarkController = {
     }
   },
   async update(bookmark: Partial<SelectBookmark> & Pick<SelectBookmark, 'id'>) {
+    invalidateCache('public:')
     const {
       relatedTagIds,
       id,
@@ -135,6 +138,7 @@ const PublicBookmarkController = {
     return res.pop()
   },
   async delete(bookmark: Pick<SelectBookmark, 'id'>) {
+    invalidateCache('public:')
     const res = await db
       .delete(publicBookmarks)
       .where(eq(publicBookmarks.id, bookmark.id))
@@ -142,6 +146,7 @@ const PublicBookmarkController = {
     return res
   },
   async removeMany({ ids }: { ids: BookmarkId[] }) {
+    invalidateCache('public:')
     const res = await db
       .delete(publicBookmarks)
       .where(inArray(publicBookmarks.id, ids))
@@ -150,8 +155,10 @@ const PublicBookmarkController = {
   },
   /**
    * 高级搜索书签列表
+   *
+   * ! 内部实现，带 TTL 缓存的入口见 findMany()
    */
-  async findMany(query?: z.output<typeof findManyBookmarksSchema>) {
+  async findManyUncached(query?: z.output<typeof findManyBookmarksSchema>) {
     query ||= findManyBookmarksSchema.parse({})
     const { page, limit, sorterKey } = query
     const filters = await createFindManyFilters(query)
@@ -212,6 +219,15 @@ const PublicBookmarkController = {
   async getCheckHostsTask() {
     return await BookmarkHostCheckController.getPublicCheckHostsTask()
   },
+  /** 高级搜索书签列表（20s 进程内缓存，写操作即时失效） */
+  async findMany(query?: z.output<typeof findManyBookmarksSchema>) {
+    const normalized = query || findManyBookmarksSchema.parse({})
+    return await cached(
+      'public:bookmarks:' + JSON.stringify(normalized),
+      20_000,
+      () => PublicBookmarkController.findManyUncached(normalized)
+    )
+  },
   async random() {
     const list = await db.query.publicBookmarks.findMany({
       with: { relatedTagIds: true },
@@ -225,9 +241,9 @@ const PublicBookmarkController = {
       })),
     }
   },
-  /** 获取所有书签数量 */
+  /** 获取所有书签数量（30s 进程内缓存，写操作即时失效） */
   async total() {
-    return await db.$count(publicBookmarks)
+    return await cached('public:total', 30_000, () => db.$count(publicBookmarks))
   },
   /** 获取最近更新的 $DEFAULT_BOOKMARK_PAGESIZE 个书签 */
   async recent() {
