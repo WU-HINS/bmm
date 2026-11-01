@@ -318,6 +318,20 @@ IdP 侧需要登记两个回调地址：
 
 <a id="faq"></a>
 
+<details>
+<summary>日志出现 <code>[auth][error] UnknownAction: Cannot parse action</code> / 接口返回 <code>400 Bad request.</code>？</summary>
+
+<br>
+
+几乎都是 `AUTH_URL` 带了路径（例如 `https://example.com/bmm`）或反向代理给请求加了前缀：
+
+- `AUTH_URL` 只写 `scheme://host[:port]`，不要带路径与结尾斜杠；
+- 本项目不支持子路径部署（未启用 Next `basePath`），需要子路径时请放在独立域名/端口；
+- 修改后重启服务，访问 `/api/auth/providers` 应返回 200。
+
+</details>
+
+
 ## 常见问题
 
 <details>

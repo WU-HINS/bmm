@@ -150,6 +150,7 @@ kubectl -n bmm rollout undo deploy/bmm    # 回滚
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
 | 登录后跳回 `/login?error=Configuration` | `AUTH_URL` 与访问地址不一致 | 统一 `AUTH_URL`、反代域名、IdP 回调三者 |
+| 日志出现 `[auth][error] UnknownAction: Cannot parse action at /api/auth/providers`（响应 400 Bad request） | `AUTH_URL` 带了路径（如 `https://host/bmm`），或反代给请求加了前缀 | `AUTH_URL` 只写 `scheme://host[:port]`；本项目不支持子路径部署 |
 | OIDC 按钮不出现 | 三项变量没齐 / 容器未重建 | `docker compose up -d` 让新 env 生效；`docker compose exec bmm env \| grep AUTH_OIDC` |
 | 容器启动即退出 | `AUTH_SECRET` 或 `DB_CONNECTION_URL` 缺失 | 看日志 `环境变量缺失: ...` |
 | SQLite 写失败 `readonly database` | 挂载点权限 | 命名卷而不是只读挂载；或修正宿主目录属主 |

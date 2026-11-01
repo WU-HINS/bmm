@@ -245,6 +245,7 @@ AUTH_OIDC_SCOPES=openid email profile
 | 登录页没有 OIDC 按钮 | 三个必填变量缺一 | 检查 `AUTH_OIDC_ISSUER/ID/SECRET` 后重启 |
 | `OAuthAccountNotLinked` | 该邮箱已被本站其他登录方式占用，默认不自动合并 | 用原方式登录 → 个人资料 → 账号绑定 |
 | `OidcEmailMissing` | id_token 无 `email` 声明 | IdP 侧开启 `email` scope 或补邮箱映射 |
+| `[auth][error] UnknownAction: Cannot parse action` / 400 `Bad request.` | `AUTH_URL` 带路径（`https://host/bmm`）或反代加了路径前缀，导致 Auth.js 的 basePath 推导错误 | `AUTH_URL` 只写 `scheme://host[:port]`（可带端口，不带路径） |
 | `Configuration` | discovery 拉取失败 / token 端点不可达 | 服务端 `curl ${AUTH_OIDC_ISSUER}/.well-known/openid-configuration` 验证 |
 | `Configuration` + 服务端日志 `Authorization server did not provide a userinfo endpoint` | Auth.js 走 discovery 时**强制要求** IdP 公布 `userinfo_endpoint` | 在 IdP 侧开启 UserInfo 端点（主流 IdP 默认就有）；自建简易 IdP 需补上该字段 |
 | `AccessDenied` | 用户在 IdP 取消授权，或被策略拦截 | 重试或联系 IdP 管理员 |
