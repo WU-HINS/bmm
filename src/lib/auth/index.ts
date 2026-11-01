@@ -26,6 +26,22 @@ const nextAuthOptions: NextAuthConfig = {
   adapter,
 }
 
+// AUTH_URL 带路径会让 next-auth 推导出错误的 basePath，这里提前告警，避免线上出现
+// "UnknownAction: Cannot parse action at /api/auth/providers"
+const authUrlPath = (() => {
+  try {
+    const raw = process.env.AUTH_URL ?? process.env.NEXTAUTH_URL
+    return raw ? new URL(raw).pathname : '/'
+  } catch {
+    return '/'
+  }
+})()
+if (authUrlPath !== '/') {
+  console.warn(
+    `[auth] AUTH_URL 带有路径 "${authUrlPath}"，登录相关接口可能异常。AUTH_URL 应为 scheme://host[:port]，不要带路径。`
+  )
+}
+
 export const nextAuthLib = NextAuth(nextAuthOptions)
 
 export const auth = nextAuthLib.auth

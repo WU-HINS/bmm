@@ -12,6 +12,9 @@ const oidcProvider = createOidcProvider()
 // https://authjs.dev/guides/edge-compatibility
 export const authConfig = {
   // debug: true,
+  // ! 必须显式固定：next-auth 会在 AUTH_URL 带路径时把 basePath 改成该路径（如 AUTH_URL=https://host/bmm → basePath=/bmm），
+  // ! 导致所有 /api/auth/* 请求解析失败（UnknownAction: Cannot parse action）。本项目不支持子路径部署。
+  basePath: '/api/auth',
   providers: [githubProvider, credentialsProvider, ...(oidcProvider ? [oidcProvider] : [])],
   // session 1 天内有效，超过 1 天会自动更新；超过 30 天内没有任何操作，就会过期，useSession() auth() 返回 null
   session: { strategy: 'jwt', maxAge: 30 * 24 * 3600, updateAge: 24 * 3600 },
